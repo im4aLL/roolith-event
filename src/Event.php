@@ -9,7 +9,7 @@ class Event implements EventInterface
 {
     private static $events = [];
     protected static $errorMessage = [
-        'name' => 'Allows only [a-zA-Z]+[a-zA-Z0-9._]',
+        'name' => 'Allows only [a-zA-Z]+[a-zA-Z0-9._*]',
         'callback' => 'Invalid callback',
         'array' => 'Array required',
         'listener' => 'Listener not defined',
@@ -26,6 +26,10 @@ class Event implements EventInterface
 
         if (!is_callable($callback)) {
             throw new InvalidArgumentException(self::$errorMessage['callback']);
+        }
+
+        if (self::isWildcardName($name)) {
+            $name = str_replace('*', 'wildcard', $name);
         }
 
         self::$events[$name][] = $callback;
@@ -69,6 +73,26 @@ class Event implements EventInterface
                 call_user_func($callback);
             }
         }
+
+        self::triggerWildCard($name, $argument);
+    }
+
+    private static function triggerWildCard($name, $argument)
+    {
+        if (strstr($name, '.')) {
+            $nameArray = explode('.', $name);
+            $wildcardListenerName = $nameArray[0].'.wildcard';
+
+            if (isset(self::$events[$wildcardListenerName]) && $nameArray[1] !== 'wildcard') {
+                try {
+                    self::trigger($wildcardListenerName, $argument);
+                } catch (InvalidArgumentException $e) {
+                    echo $e->getMessage();
+                } catch (Exception $e) {
+                    echo $e->getMessage();
+                }
+            }
+        }
     }
 
     /**
@@ -79,7 +103,7 @@ class Event implements EventInterface
      */
     protected static function isValidName($name)
     {
-        return (bool) preg_match('/^[a-zA-Z]+[a-zA-Z0-9._]+$/', $name);
+        return (bool) preg_match('/^[a-zA-Z]+[a-zA-Z0-9.*_]+$/', $name);
     }
 
     /**
@@ -116,5 +140,16 @@ class Event implements EventInterface
     public static function setErrorMessage($errorMessageArray)
     {
         self::$errorMessage = $errorMessageArray;
+    }
+
+    /**
+     * Is wildcard name
+     *
+     * @param $name
+     * @return bool
+     */
+    protected static function isWildcardName($name)
+    {
+        return (bool) strstr($name, '.*');
     }
 }

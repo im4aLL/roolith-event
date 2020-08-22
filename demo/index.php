@@ -51,3 +51,21 @@ Event::listen('updated', function($param1, $param2) {
 if($user->updated()) {
     Event::trigger('updated', ['param1', 'param2']);
 }
+
+
+
+Event::listen('event.login', function () {
+    echo 'Login Wild card fired! <br>';
+});
+
+Event::listen('event.logout', function () {
+    echo 'Logout Wild card fired! <br>';
+});
+
+Event::listen('event.*', function ($param) {
+    echo 'Wild card fired! - '.$param.' <br>';
+});
+
+
+Event::trigger('event.login', 'login');
+Event::trigger('event.logout', 'logout');
