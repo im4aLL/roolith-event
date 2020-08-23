@@ -9,7 +9,7 @@ class Event implements EventInterface
 {
     private static $events = [];
     protected static $errorMessage = [
-        'name' => 'Allows only [a-zA-Z]+[a-zA-Z0-9._*]',
+        'name' => 'Name characters should contain alphanumeric with ., * and _',
         'callback' => 'Invalid callback',
         'array' => 'Array required',
         'listener' => 'Listener not defined',
@@ -33,6 +33,8 @@ class Event implements EventInterface
         }
 
         self::$events[$name][] = $callback;
+
+        return true;
     }
 
     /**
@@ -40,13 +42,17 @@ class Event implements EventInterface
      */
     public static function listeners($names, $callback)
     {
+        $result = true;
+
         if (!is_array($names)) {
             throw new InvalidArgumentException(self::$errorMessage['array']);
         }
 
         foreach ($names as $name) {
-            self::listen($name, $callback);
+            $result = self::listen($name, $callback);
         }
+
+        return $result;
     }
 
     /**
@@ -74,9 +80,26 @@ class Event implements EventInterface
             }
         }
 
-        self::triggerWildCard($name, $argument);
+        try {
+            self::triggerWildCard($name, $argument);
+        } catch (InvalidArgumentException $e) {
+            throw new InvalidArgumentException(self::$errorMessage['name']);
+        } catch (Exception $e) {
+            throw new Exception(self::$errorMessage['listener']);
+        }
+
+        return true;
     }
 
+    /**
+     * Trigger wild card event
+     *
+     * @param $name
+     * @param $argument
+     * @return bool
+     * @throws Exception
+     * @throws InvalidArgumentException
+     */
     private static function triggerWildCard($name, $argument)
     {
         if (strstr($name, '.')) {
@@ -85,14 +108,16 @@ class Event implements EventInterface
 
             if (isset(self::$events[$wildcardListenerName]) && $nameArray[1] !== 'wildcard') {
                 try {
-                    self::trigger($wildcardListenerName, $argument);
+                    return self::trigger($wildcardListenerName, $argument);
                 } catch (InvalidArgumentException $e) {
-                    echo $e->getMessage();
+                    throw new InvalidArgumentException($e->getMessage());
                 } catch (Exception $e) {
-                    echo $e->getMessage();
+                    throw new Exception($e->getMessage());
                 }
             }
         }
+
+        return false;
     }
 
     /**
@@ -103,7 +128,7 @@ class Event implements EventInterface
      */
     protected static function isValidName($name)
     {
-        return (bool) preg_match('/^[a-zA-Z]+[a-zA-Z0-9.*_]+$/', $name);
+        return (bool) preg_match('/^[a-zA-Z0-9.*_]+$/', $name);
     }
 
     /**
@@ -136,10 +161,13 @@ class Event implements EventInterface
      * Set error messages
      *
      * @param $errorMessageArray array
+     * @return bool
      */
     public static function setErrorMessage($errorMessageArray)
     {
         self::$errorMessage = $errorMessageArray;
+
+        return true;
     }
 
     /**
@@ -151,5 +179,17 @@ class Event implements EventInterface
     protected static function isWildcardName($name)
     {
         return (bool) strstr($name, '.*');
+    }
+
+    /**
+     * Reset all events
+     *
+     * @return bool
+     */
+    public static function reset()
+    {
+        self::$events = [];
+
+        return true;
     }
 }
