@@ -20,7 +20,7 @@ Event::trigger('login');
 <?php
 use Roolith\Event;
 
-require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/PATH_TO_AUTOLOAD/autoload.php';
 
 class User {
     public function login() {
