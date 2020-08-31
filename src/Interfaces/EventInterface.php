@@ -1,9 +1,9 @@
 <?php
-namespace Roolith\Interfaces;
+namespace Roolith\Event\Interfaces;
 
 
-use Roolith\Exceptions\Exception;
-use Roolith\Exceptions\InvalidArgumentException;
+use Roolith\Event\Exceptions\Exception;
+use Roolith\Event\Exceptions\InvalidArgumentException;
 
 interface EventInterface
 {

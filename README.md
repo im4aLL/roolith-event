@@ -18,7 +18,7 @@ Event::trigger('login');
 ### Working example
 ```php
 <?php
-use Roolith\Event;
+use Roolith\Event\Event;
 
 require_once __DIR__ . '/PATH_TO_AUTOLOAD/autoload.php';
 

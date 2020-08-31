@@ -1,6 +1,6 @@
 <?php
 use PHPUnit\Framework\TestCase;
-use Roolith\Event;
+use Roolith\Event\Event;
 
 class EventTest extends TestCase
 {
@@ -13,7 +13,7 @@ class EventTest extends TestCase
      * @dataProvider listenerValidProvider
      * @param $name
      * @param $callback
-     * @throws \Roolith\Exceptions\InvalidArgumentException
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
      */
     public function testShouldAddListener($name, $callback)
     {
@@ -26,11 +26,11 @@ class EventTest extends TestCase
      * @dataProvider listenerInvalidProvider
      * @param $name
      * @param $callback
-     * @throws \Roolith\Exceptions\InvalidArgumentException
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
      */
     public function testShouldThrowExceptionForListener($name, $callback)
     {
-        $this->expectException(\Roolith\Exceptions\InvalidArgumentException::class);
+        $this->expectException(\Roolith\Event\Exceptions\InvalidArgumentException::class);
         Event::listen($name, $callback);
     }
 
@@ -39,7 +39,7 @@ class EventTest extends TestCase
         $listener = Event::listeners(['a', 'n'], function (){});
         $this->assertTrue($listener);
 
-        $this->expectException(\Roolith\Exceptions\InvalidArgumentException::class);
+        $this->expectException(\Roolith\Event\Exceptions\InvalidArgumentException::class);
         Event::listeners('a', function (){});
     }
 

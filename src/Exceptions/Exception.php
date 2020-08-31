@@ -1,5 +1,5 @@
 <?php
-namespace Roolith\Exceptions;
+namespace Roolith\Event\Exceptions;
 
 
 class Exception extends \Exception
