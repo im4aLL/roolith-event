@@ -1,4 +1,6 @@
 <?php
+namespace Roolith\Tests;
+
 use PHPUnit\Framework\TestCase;
 use Roolith\Event\Event;
 
@@ -49,6 +51,15 @@ class EventTest extends TestCase
         $result = Event::trigger('event');
 
         $this->assertTrue($result);
+    }
+
+    public function testShouldTriggerEventFromEventListenerFile()
+    {
+        Event::listen('event1', EventListener::class);
+        Event::listen('event2', [EventListener::class, 'handle']);
+
+        $this->assertTrue(Event::trigger('event1'));
+        $this->assertTrue(Event::trigger('event2'));
     }
 
     public function testShouldTriggerEventWithParam()
@@ -122,7 +133,8 @@ class EventTest extends TestCase
     {
         return [
             ['!name', function () {}],
-            ['name', ''],
+            ['name', true],
+            ['name', 1],
         ];
     }
 
@@ -134,6 +146,8 @@ class EventTest extends TestCase
             ['test', $fn],
             ['test.name', $fn],
             ['test.*', $fn],
+            ['test', EventListener::class],
+            ['test.handle', [EventListener::class, 'handle']],
         ];
     }
 }

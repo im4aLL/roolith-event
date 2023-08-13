@@ -1,14 +1,15 @@
 <?php
 namespace Roolith\Event;
 
+use Closure;
 use Roolith\Event\Exceptions\Exception;
 use Roolith\Event\Exceptions\InvalidArgumentException;
 use Roolith\Event\Interfaces\EventInterface;
 
 class Event implements EventInterface
 {
-    private static $events = [];
-    protected static $errorMessage = [
+    private static array $events = [];
+    protected static array $errorMessage = [
         'name' => 'Name characters should contain alphanumeric with ., * and _',
         'callback' => 'Invalid callback',
         'array' => 'Array required',
@@ -18,13 +19,13 @@ class Event implements EventInterface
     /**
      * @inheritDoc
      */
-    public static function listen($name, $callback)
+    public static function listen(string $name, $callback): bool
     {
         if (!self::isValidName($name)) {
             throw new InvalidArgumentException(self::$errorMessage['name']);
         }
 
-        if (!is_callable($callback)) {
+        if (!is_callable($callback) && !is_string($callback) && !is_array($callback)) {
             throw new InvalidArgumentException(self::$errorMessage['callback']);
         }
 
@@ -40,7 +41,7 @@ class Event implements EventInterface
     /**
      * @inheritDoc
      */
-    public static function listeners($names, $callback)
+    public static function listeners(string|array $names, $callback): bool
     {
         $result = true;
 
@@ -58,7 +59,7 @@ class Event implements EventInterface
     /**
      * @inheritDoc
      */
-    public static function trigger($name, $argument = null)
+    public static function trigger(string $name, $argument = null): bool
     {
         if (!self::isValidName($name)) {
             throw new InvalidArgumentException(self::$errorMessage['name']);
@@ -69,15 +70,7 @@ class Event implements EventInterface
         }
 
         foreach (self::$events[$name] as $event => $callback) {
-            if($argument && is_array($argument)) {
-                call_user_func_array($callback, $argument);
-            }
-            elseif ($argument && !is_array($argument)) {
-                call_user_func($callback, $argument);
-            }
-            else {
-                call_user_func($callback);
-            }
+            self::executeCallback($callback, $argument);
         }
 
         try {
@@ -100,9 +93,9 @@ class Event implements EventInterface
      * @throws Exception
      * @throws InvalidArgumentException
      */
-    private static function triggerWildCard($name, $argument)
+    private static function triggerWildCard(string $name, $argument): bool
     {
-        if (strstr($name, '.')) {
+        if (str_contains($name, '.')) {
             $nameArray = explode('.', $name);
             $wildcardListenerName = $nameArray[0].'.wildcard';
 
@@ -121,12 +114,39 @@ class Event implements EventInterface
     }
 
     /**
+     * @link https://github.com/eliseekn/tinymvc/blob/2.0/core/Routing/Router.php
+     */
+    protected static function executeCallback($callback, $argument = null): mixed
+    {
+        if (is_null($argument)) $argument = [];
+        if (is_string($argument))  $argument = [$argument];
+
+        if ($callback instanceof Closure) {
+            return (new DependencyInjection())->resolveClosure($callback, $argument);
+        }
+
+        if (is_array($callback)) {
+            list($controller, $action) = $callback;
+
+            if (class_exists($controller) && method_exists($controller, $action)) {
+                return (new DependencyInjection())->resolve($controller, $action, $argument);
+            }
+        }
+
+        if (is_string($callback)) {
+            if (class_exists($callback)) {
+                return (new DependencyInjection())->resolve($callback, '__invoke', $argument);
+            }
+        }
+    }
+
+    /**
      * Is valid name
      *
      * @param $name
      * @return bool
      */
-    protected static function isValidName($name)
+    protected static function isValidName(string $name): bool
     {
         return (bool) preg_match('/^[a-zA-Z0-9.*_]+$/', $name);
     }
@@ -134,14 +154,14 @@ class Event implements EventInterface
     /**
      * @inheritDoc
      */
-    public static function unregister($name)
+    public static function unregister(string|array $name): bool
     {
         if (is_array($name)) {
             foreach ($name as $n) {
                 $result = self::unregister($n);
 
                 if (!$result) {
-                    return $result;
+                    return false;
                 }
             }
 
@@ -163,7 +183,7 @@ class Event implements EventInterface
      * @param $errorMessageArray array
      * @return bool
      */
-    public static function setErrorMessage($errorMessageArray)
+    public static function setErrorMessage(array $errorMessageArray): bool
     {
         self::$errorMessage = $errorMessageArray;
 
@@ -176,7 +196,7 @@ class Event implements EventInterface
      * @param $name
      * @return bool
      */
-    protected static function isWildcardName($name)
+    protected static function isWildcardName(string $name): bool
     {
         return (bool) strstr($name, '.*');
     }
@@ -186,7 +206,7 @@ class Event implements EventInterface
      *
      * @return bool
      */
-    public static function reset()
+    public static function reset(): bool
     {
         self::$events = [];
 
