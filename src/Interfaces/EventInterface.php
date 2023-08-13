@@ -15,34 +15,25 @@ interface EventInterface
      * @return bool
      * @throws InvalidArgumentException
      */
-    public static function listen($name, $callback);
+    public static function listen(string $name, $callback): bool;
 
     /**
      * Listeners
      *
-     * @param array $names
-     * @param $callback callable
-     * @return bool
      * @throws InvalidArgumentException
      */
-    public static function listeners($names, $callback);
+    public static function listeners(string|array $names, $callback): bool;
 
     /**
      * Trigger event
      *
-     * @param $name
-     * @param null $argument
-     * @return bool
      * @throws Exception
      * @throws InvalidArgumentException
      */
-    public static function trigger($name, $argument = null);
+    public static function trigger(string $name, $argument = null): bool;
 
     /**
      * Remove event
-     *
-     * @param $name string|array
-     * @return bool
      */
-    public static function unregister($name);
+    public static function unregister(string|array $name): bool;
 }
