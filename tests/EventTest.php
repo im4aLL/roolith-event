@@ -340,6 +340,130 @@ class EventTest extends TestCase
     }
 
     /**
+     * Literal wildcard segment listener must not fire on other names under the prefix.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testLiteralWildcardSegmentDoesNotFireAsWildcard(): void
+    {
+        $wildcardCounter = 0;
+        $literalCounter = 0;
+
+        Event::listen('event.*', function () use (&$wildcardCounter) {
+            $wildcardCounter++;
+        });
+
+        Event::listen('event.wildcard', function () use (&$literalCounter) {
+            $literalCounter++;
+        });
+
+        Event::trigger('event.login');
+
+        $this->assertEquals(1, $wildcardCounter);
+        $this->assertEquals(0, $literalCounter);
+    }
+
+    /**
+     * Unregistering wildcard form must leave literal wildcard segment listener intact.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testUnregisterWildcardLeavesLiteralWildcardSegment(): void
+    {
+        $wildcardCounter = 0;
+        $literalCounter = 0;
+
+        Event::listen('event.*', function () use (&$wildcardCounter) {
+            $wildcardCounter++;
+        });
+
+        Event::listen('event.wildcard', function () use (&$literalCounter) {
+            $literalCounter++;
+        });
+
+        $this->assertTrue(Event::unregister('event.*'));
+
+        $this->assertTrue(Event::trigger('event.wildcard'));
+        $this->assertEquals(0, $wildcardCounter);
+        $this->assertEquals(1, $literalCounter);
+    }
+
+    /**
+     * Unregistering literal wildcard segment must leave wildcard listener intact.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testUnregisterLiteralWildcardSegmentLeavesWildcard(): void
+    {
+        $wildcardCounter = 0;
+        $literalCounter = 0;
+
+        Event::listen('event.*', function () use (&$wildcardCounter) {
+            $wildcardCounter++;
+        });
+
+        Event::listen('event.wildcard', function () use (&$literalCounter) {
+            $literalCounter++;
+        });
+
+        $this->assertTrue(Event::unregister('event.wildcard'));
+
+        $this->assertTrue(Event::trigger('event.login'));
+        $this->assertEquals(1, $wildcardCounter);
+        $this->assertEquals(0, $literalCounter);
+    }
+
+    /**
+     * Triggering literal wildcard segment fires both literal and wildcard listeners.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testTriggerLiteralWildcardSegmentFiresBothListeners(): void
+    {
+        $wildcardCounter = 0;
+        $literalCounter = 0;
+
+        Event::listen('event.*', function () use (&$wildcardCounter) {
+            $wildcardCounter++;
+        });
+
+        Event::listen('event.wildcard', function () use (&$literalCounter) {
+            $literalCounter++;
+        });
+
+        $this->assertTrue(Event::trigger('event.wildcard'));
+        $this->assertEquals(1, $wildcardCounter);
+        $this->assertEquals(1, $literalCounter);
+    }
+
+    /**
+     * Star-containing trigger still resolves to its prefix wildcard without recursion.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testStarContainingTriggerResolvesToPrefixWildcard(): void
+    {
+        $wildcardCounter = 0;
+
+        Event::listen('event.*', function () use (&$wildcardCounter) {
+            $wildcardCounter++;
+        });
+
+        $this->assertTrue(Event::trigger('event.login.*'));
+        $this->assertEquals(1, $wildcardCounter);
+    }
+
+    /**
      * Invalid listener provider.
      *
      * @return array<int, array{0: string, 1: callable}>
