@@ -200,6 +200,10 @@ class Event implements EventInterface
 
             return true;
         } else {
+            if (self::isWildcardName($name)) {
+                $name = str_replace('*', 'wildcard', $name);
+            }
+
             if (isset(self::$events[$name])) {
                 unset(self::$events[$name]);
 

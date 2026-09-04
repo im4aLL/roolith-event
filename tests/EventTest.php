@@ -274,6 +274,41 @@ class EventTest extends TestCase
     }
 
     /**
+     * Should unregister a wildcard listener using wildcard form.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testShouldUnregisterWildcardListener(): void
+    {
+        Event::listen('event.*', function () {});
+
+        $this->assertTrue(Event::unregister('event.*'));
+
+        $this->expectException(\Roolith\Event\Exceptions\Exception::class);
+        Event::trigger('event.login');
+    }
+
+    /**
+     * Should unregister wildcard listeners using array form.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testShouldUnregisterWildcardListenersArrayForm(): void
+    {
+        Event::listen('event.*', function () {});
+        Event::listen('other.*', function () {});
+
+        $this->assertTrue(Event::unregister(['event.*', 'other.*']));
+
+        $this->expectException(\Roolith\Event\Exceptions\Exception::class);
+        Event::trigger('event.login');
+    }
+
+    /**
      * Invalid listener provider.
      *
      * @return array<int, array{0: string, 1: callable}>
