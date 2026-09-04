@@ -40,9 +40,7 @@ class Event implements EventInterface
             throw new InvalidArgumentException(self::$errorMessage['name']);
         }
 
-        if (self::isWildcardName($name)) {
-            $name = str_replace('*', 'wildcard', $name);
-        }
+        $name = self::normalizeStorageKey($name);
 
         self::$events[$name][] = $callback;
 
@@ -82,6 +80,8 @@ class Event implements EventInterface
         if (!self::isValidName($name)) {
             throw new InvalidArgumentException(self::$errorMessage['name']);
         }
+
+        $name = self::normalizeStorageKey($name);
 
         if (!isset(self::$events[$name]) && !self::hasWildcardListener($name)) {
             throw new Exception(self::$errorMessage['listener']);
@@ -200,9 +200,7 @@ class Event implements EventInterface
 
             return true;
         } else {
-            if (self::isWildcardName($name)) {
-                $name = str_replace('*', 'wildcard', $name);
-            }
+            $name = self::normalizeStorageKey($name);
 
             if (isset(self::$events[$name])) {
                 unset(self::$events[$name]);
@@ -236,6 +234,24 @@ class Event implements EventInterface
     protected static function isWildcardName(string $name): bool
     {
         return (bool) strstr($name, '.*');
+    }
+
+    /**
+     * Normalize wildcard names to their storage key.
+     *
+     * `event.*` is stored as `event.wildcard` so direct and wildcard
+     * triggers resolve to the same key.
+     *
+     * @param string $name Event name to normalize.
+     * @return string Storage key.
+     */
+    private static function normalizeStorageKey(string $name): string
+    {
+        if (self::isWildcardName($name)) {
+            return str_replace('*', 'wildcard', $name);
+        }
+
+        return $name;
     }
 
     /**

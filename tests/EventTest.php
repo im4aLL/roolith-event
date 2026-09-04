@@ -274,6 +274,37 @@ class EventTest extends TestCase
     }
 
     /**
+     * Direct wildcard form trigger passes argument to listener.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testDirectWildcardFormTriggerPassesArgument(): void
+    {
+        $received = null;
+
+        Event::listen('event.*', function ($value) use (&$received) {
+            $received = $value;
+        });
+
+        $this->assertTrue(Event::trigger('event.*', 'a'));
+        $this->assertEquals('a', $received);
+    }
+
+    /**
+     * Direct wildcard form trigger throws when no listener registered.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testDirectWildcardFormTriggerThrowsWhenNoListener(): void
+    {
+        $this->expectException(\Roolith\Event\Exceptions\Exception::class);
+        Event::trigger('event.*');
+    }
+
+    /**
      * Should unregister a wildcard listener using wildcard form.
      *
      * @return void
