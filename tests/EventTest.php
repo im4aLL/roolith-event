@@ -4,18 +4,21 @@ use Roolith\Event\Event;
 
 class EventTest extends TestCase
 {
-    public function tearDown(): void
+    protected function tearDown(): void
     {
         Event::reset();
     }
 
     /**
-     * @dataProvider listenerValidProvider
-     * @param $name
-     * @param $callback
+     * Should add a listener.
+     *
+     * @param string $name Event name.
+     * @param callable $callback Listener callback.
+     * @return void
      * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     * @dataProvider listenerValidProvider
      */
-    public function testShouldAddListener($name, $callback)
+    public function testShouldAddListener(string $name, callable $callback): void
     {
         $listener = Event::listen($name, $callback);
 
@@ -23,27 +26,64 @@ class EventTest extends TestCase
     }
 
     /**
-     * @dataProvider listenerInvalidProvider
-     * @param $name
-     * @param $callback
+     * Should throw for invalid event name.
+     *
+     * @param string $name Invalid event name.
+     * @param callable $callback Listener callback.
+     * @return void
      * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     * @dataProvider listenerInvalidProvider
      */
-    public function testShouldThrowExceptionForListener($name, $callback)
+    public function testShouldThrowExceptionForListener(string $name, callable $callback): void
     {
         $this->expectException(\Roolith\Event\Exceptions\InvalidArgumentException::class);
         Event::listen($name, $callback);
     }
 
-    public function testShouldAddMultipleListener()
+    /**
+     * Should throw TypeError for non-callable callback.
+     *
+     * @return void
+     */
+    public function testShouldThrowTypeErrorForInvalidCallback(): void
+    {
+        $this->expectException(\TypeError::class);
+        /** @phpstan-ignore-argument */
+        Event::listen('name', '');
+    }
+
+    /**
+     * Should add multiple listeners.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testShouldAddMultipleListener(): void
     {
         $listener = Event::listeners(['a', 'n'], function (){});
         $this->assertTrue($listener);
+    }
 
-        $this->expectException(\Roolith\Event\Exceptions\InvalidArgumentException::class);
+    /**
+     * Should throw TypeError when listeners() receives a non-array.
+     *
+     * @return void
+     */
+    public function testShouldThrowTypeErrorForListenersWithNonArray(): void
+    {
+        $this->expectException(\TypeError::class);
+        /** @phpstan-ignore-argument */
         Event::listeners('a', function (){});
     }
 
-    public function testShouldTriggerEvent()
+    /**
+     * Should trigger an event.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testShouldTriggerEvent(): void
     {
         Event::listen('event', function () {});
         $result = Event::trigger('event');
@@ -51,7 +91,14 @@ class EventTest extends TestCase
         $this->assertTrue($result);
     }
 
-    public function testShouldTriggerEventWithParam()
+    /**
+     * Should trigger an event with a single param.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testShouldTriggerEventWithParam(): void
     {
         $fnCalled = false;
         $param = '';
@@ -70,7 +117,14 @@ class EventTest extends TestCase
         $this->assertEquals('a', $param);
     }
 
-    public function testShouldTriggerEventWithMultipleParam()
+    /**
+     * Should trigger an event with multiple params.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testShouldTriggerEventWithMultipleParam(): void
     {
         $fnCalled = false;
         $param1 = '';
@@ -92,7 +146,14 @@ class EventTest extends TestCase
         $this->assertEquals('b', $param2);
     }
 
-    public function testShouldListenWildcardEvent()
+    /**
+     * Should listen to wildcard events.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testShouldListenWildcardEvent(): void
     {
         $loginEventListenCounter = 0;
         $logoutEventListenCounter = 0;
@@ -118,15 +179,118 @@ class EventTest extends TestCase
         $this->assertEquals(2, $wildcardEventListenCounter);
     }
 
-    public function listenerInvalidProvider()
+    /**
+     * Should trigger a wildcard-only listener.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testShouldTriggerWildcardOnlyListener(): void
+    {
+        $wildcardEventListenCounter = 0;
+
+        Event::listen('event.*', function () use (&$wildcardEventListenCounter) {
+            $wildcardEventListenCounter++;
+        });
+
+        $result = Event::trigger('event.login');
+
+        $this->assertTrue($result);
+        $this->assertEquals(1, $wildcardEventListenCounter);
+    }
+
+    /**
+     * Should still throw when wildcard prefix does not match.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testShouldStillThrowWhenWildcardPrefixDoesNotMatch(): void
+    {
+        Event::listen('other.*', function () {});
+
+        $this->expectException(\Roolith\Event\Exceptions\Exception::class);
+        Event::trigger('event.login');
+    }
+
+    /**
+     * Should pass argument to wildcard-only listener.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testShouldPassArgumentToWildcardOnlyListener(): void
+    {
+        $received = null;
+
+        Event::listen('event.*', function ($value) use (&$received) {
+            $received = $value;
+        });
+
+        Event::trigger('event.login', 'a');
+
+        $this->assertEquals('a', $received);
+    }
+
+    /**
+     * Wildcard rewrite key trigger fires once without recursion.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testWildcardRewriteKeyTriggerFiresOnceWithoutRecursion(): void
+    {
+        $counter = 0;
+
+        Event::listen('event.*', function () use (&$counter) {
+            $counter++;
+        });
+
+        $this->assertTrue(Event::trigger('event.wildcard'));
+        $this->assertEquals(1, $counter);
+    }
+
+    /**
+     * Direct wildcard form trigger fires once without recursion.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testDirectWildcardFormTriggerFiresOnceWithoutRecursion(): void
+    {
+        $counter = 0;
+
+        Event::listen('event.*', function () use (&$counter) {
+            $counter++;
+        });
+
+        $this->assertTrue(Event::trigger('event.*'));
+        $this->assertEquals(1, $counter);
+    }
+
+    /**
+     * Invalid listener provider.
+     *
+     * @return array<int, array{0: string, 1: callable}>
+     */
+    public function listenerInvalidProvider(): array
     {
         return [
             ['!name', function () {}],
-            ['name', ''],
         ];
     }
 
-    public function listenerValidProvider()
+    /**
+     * Valid listener provider.
+     *
+     * @return array<int, array{0: string, 1: callable}>
+     */
+    public function listenerValidProvider(): array
     {
         $fn = function () {};
 

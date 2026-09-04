@@ -10,12 +10,13 @@
         }
     ],
     "minimum-stability": "stable",
-    "require": {},
+    "require": {
+        "php": ">=8.0"
+    },
     "require-dev": {
         "phpunit/phpunit": "^9.2"
     },
     "autoload": {
         "psr-4": {"Roolith\\Event\\": "src/"}
-    },
-    "version": "1.0.1"
+    }
 }
