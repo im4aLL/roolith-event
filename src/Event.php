@@ -46,22 +46,36 @@ class Event implements EventInterface
     }
 
     /**
-     * Register a listener for multiple events.
+     * Register a listener for multiple events atomically.
+     *
+     * Empty list returns false and registers nothing. All names are
+     * validated before any listener is registered, so a failure
+     * leaves existing state untouched. Non-string elements throw
+     * `InvalidArgumentException` (note: `listen()` coerces scalar
+     * names via its `string` type-hint instead).
      *
      * @param array<int, string> $names List of event names.
      * @param callable $callback Listener callback shared by all given event names.
-     * @return bool True on success.
-     * @throws InvalidArgumentException When any event name is invalid.
+     * @return bool True on success, false when given an empty list.
+     * @throws InvalidArgumentException When any event name is invalid or not a string.
      */
     public static function listeners(array $names, callable $callback): bool
     {
-        $result = true;
-
-        foreach ($names as $name) {
-            $result = self::listen($name, $callback);
+        if ($names === []) {
+            return false;
         }
 
-        return $result;
+        foreach ($names as $name) {
+            if (!is_string($name) || !self::isValidName($name)) {
+                throw new InvalidArgumentException(self::$errorMessage['name']);
+            }
+        }
+
+        foreach ($names as $name) {
+            self::$events[$name][] = $callback;
+        }
+
+        return true;
     }
 
     /**
@@ -112,20 +126,43 @@ class Event implements EventInterface
      * Get matching single-level wildcard listener storage key.
      *
      * `event.login` matches `event.*` stored as `event.*`.
+     * `a.b.c` matches `a.b.*`. Matching is single-level: only the
+     * immediate parent prefix is considered (depth must align).
      * Self-recursion is guarded in `triggerWildCard()`, so names
      * containing `*` (e.g. `event.*`, `event.login.*`) still resolve
-     * to their prefix wildcard here.
+     * to their prefix wildcard here. When the trigger itself is a
+     * wildcard form with no exact listener (e.g. `event.login.*`),
+     * walk up to the closest ancestor wildcard (`event.*`).
      *
      * @param string $name Event name to match.
      * @return string|null Wildcard storage key or null when none matches.
      */
     private static function getWildcardListenerName(string $name): ?string
     {
-        if (strstr($name, '.')) {
-            $nameArray = explode('.', $name);
+        if (!str_contains($name, '.')) {
+            return null;
+        }
 
-            if (isset(self::$events[$nameArray[0] . '.*'])) {
-                return $nameArray[0] . '.*';
+        $parts = explode('.', $name);
+        $parentParts = array_slice($parts, 0, -1);
+
+        if ($parentParts === []) {
+            return null;
+        }
+
+        $candidate = implode('.', $parentParts) . '.*';
+
+        if (isset(self::$events[$candidate])) {
+            return $candidate;
+        }
+
+        if ($candidate === $name) {
+            for ($i = count($parts) - 2; $i >= 1; $i--) {
+                $ancestor = implode('.', array_slice($parts, 0, $i)) . '.*';
+
+                if ($ancestor !== $name && isset(self::$events[$ancestor])) {
+                    return $ancestor;
+                }
             }
         }
 
@@ -210,14 +247,26 @@ class Event implements EventInterface
     }
 
     /**
-     * Set error messages.
+     * Set error messages by merging over defaults.
+     *
+     * Unknown keys or non-string/empty values are rejected so a
+     * partial update can never leave other keys undefined.
      *
      * @param array<string, string> $errorMessageArray Custom error messages keyed by `name`, `callback`, `array`, `listener`.
      * @return bool True on success.
+     * @throws InvalidArgumentException When a key is unknown or a message is not a non-empty string.
      */
     public static function setErrorMessage(array $errorMessageArray): bool
     {
-        self::$errorMessage = $errorMessageArray;
+        $allowed = ['name', 'callback', 'array', 'listener'];
+
+        foreach ($errorMessageArray as $key => $message) {
+            if (!in_array($key, $allowed, true) || !is_string($message) || $message === '') {
+                throw new InvalidArgumentException('Invalid error message key or value');
+            }
+        }
+
+        self::$errorMessage = array_merge(self::$errorMessage, $errorMessageArray);
 
         return true;
     }

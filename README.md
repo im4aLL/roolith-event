@@ -92,3 +92,6 @@ Event::listen('event.*', function ($param) {
 Event::trigger('event.login', 'login');
 Event::trigger('event.logout', 'logout');
 ```
+
+Wildcard matching is single-level: `event.*` matches `event.login` but not
+`event.login.extra`, and `a.b.*` matches `a.b.c` but not `a.b.c.d`.

@@ -7,6 +7,12 @@ class EventTest extends TestCase
     protected function tearDown(): void
     {
         Event::reset();
+        Event::setErrorMessage([
+            'name' => 'Name characters should contain alphanumeric with ., * and _',
+            'callback' => 'Invalid callback',
+            'array' => 'Array required',
+            'listener' => 'Listener not defined',
+        ]);
     }
 
     /**
@@ -533,6 +539,242 @@ class EventTest extends TestCase
 
         $this->assertTrue(Event::trigger('event.login.*'));
         $this->assertEquals(1, $wildcardCounter);
+    }
+
+    /**
+     * Nested wildcard listener fires on immediate child.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testShouldTriggerNestedWildcardListener(): void
+    {
+        $counter = 0;
+
+        Event::listen('a.b.*', function () use (&$counter) {
+            $counter++;
+        });
+
+        $this->assertTrue(Event::trigger('a.b.c'));
+        $this->assertEquals(1, $counter);
+    }
+
+    /**
+     * Nested wildcard passes argument to listener.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testShouldPassArgumentToNestedWildcardListener(): void
+    {
+        $received = null;
+
+        Event::listen('a.b.*', function ($value) use (&$received) {
+            $received = $value;
+        });
+
+        Event::trigger('a.b.c', 'x');
+
+        $this->assertEquals('x', $received);
+    }
+
+    /**
+     * Nested wildcard does not fire for deeper levels (single-level).
+     *
+     * Single-level semantics are intentional: `a.b.*` matches `a.b.c`
+     * but not `a.b.c.d`. Note this tightens the old first-segment
+     * behavior where `a.*` matched any depth under `a.`.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testNestedWildcardDoesNotMatchDeeperLevel(): void
+    {
+        Event::listen('a.b.*', function () {});
+
+        try {
+            Event::trigger('a.b.c.d');
+            $this->fail('Expected Exception for deeper level');
+        } catch (\Roolith\Event\Exceptions\Exception $e) {
+            $this->assertEquals('Listener not defined', $e->getMessage());
+        }
+    }
+
+    /**
+     * Shorter wildcard does not fire for deeper trigger (single-level).
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testShorterWildcardDoesNotMatchDeeperTrigger(): void
+    {
+        Event::listen('a.*', function () {});
+
+        try {
+            Event::trigger('a.b.c');
+            $this->fail('Expected Exception for deeper trigger');
+        } catch (\Roolith\Event\Exceptions\Exception $e) {
+            $this->assertEquals('Listener not defined', $e->getMessage());
+        }
+    }
+
+    /**
+     * Star-containing nested trigger falls back to ancestor wildcard.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testNestedStarTriggerFallsBackToAncestorWildcard(): void
+    {
+        $counter = 0;
+
+        Event::listen('a.b.*', function () use (&$counter) {
+            $counter++;
+        });
+
+        $this->assertTrue(Event::trigger('a.b.c.*'));
+        $this->assertEquals(1, $counter);
+    }
+
+    /**
+     * Partial setErrorMessage merges and preserves other keys.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testSetErrorMessagePartialMergePreservesOtherKeys(): void
+    {
+        Event::setErrorMessage(['listener' => 'custom-missing']);
+
+        try {
+            Event::trigger('missing.event');
+            $this->fail('Expected Exception for missing listener');
+        } catch (\Roolith\Event\Exceptions\Exception $e) {
+            $this->assertEquals('custom-missing', $e->getMessage());
+        }
+
+        try {
+            Event::listen('!bad', function () {});
+            $this->fail('Expected InvalidArgumentException for invalid name');
+        } catch (\Roolith\Event\Exceptions\InvalidArgumentException $e) {
+            $this->assertEquals('Name characters should contain alphanumeric with ., * and _', $e->getMessage());
+        }
+    }
+
+    /**
+     * setErrorMessage rejects unknown keys.
+     *
+     * @return void
+     */
+    public function testSetErrorMessageRejectsUnknownKey(): void
+    {
+        try {
+            Event::setErrorMessage(['unknown' => 'x']);
+            $this->fail('Expected InvalidArgumentException');
+        } catch (\Roolith\Event\Exceptions\InvalidArgumentException $e) {
+            $this->assertEquals('Invalid error message key or value', $e->getMessage());
+        }
+    }
+
+    /**
+     * setErrorMessage rejects empty message.
+     *
+     * @return void
+     */
+    public function testSetErrorMessageRejectsEmptyMessage(): void
+    {
+        try {
+            Event::setErrorMessage(['listener' => '']);
+            $this->fail('Expected InvalidArgumentException');
+        } catch (\Roolith\Event\Exceptions\InvalidArgumentException $e) {
+            $this->assertEquals('Invalid error message key or value', $e->getMessage());
+        }
+    }
+
+    /**
+     * Empty listeners list returns false and registers nothing.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testListenersEmptyArrayReturnsFalse(): void
+    {
+        $this->assertFalse(Event::listeners([], function () {}));
+    }
+
+    /**
+     * listeners() is atomic: failure leaves nothing registered.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testListenersIsAtomicOnFailure(): void
+    {
+        try {
+            Event::listeners(['good.event', '!bad'], function () {});
+            $this->fail('Expected InvalidArgumentException');
+        } catch (\Roolith\Event\Exceptions\InvalidArgumentException $e) {
+            $this->assertEquals('Name characters should contain alphanumeric with ., * and _', $e->getMessage());
+        }
+
+        try {
+            Event::trigger('good.event');
+            $this->fail('Expected Exception for unregistered event');
+        } catch (\Roolith\Event\Exceptions\Exception $e) {
+            $this->assertEquals('Listener not defined', $e->getMessage());
+        }
+    }
+
+    /**
+     * listeners() rejects non-string element atomically.
+     *
+     * @return void
+     */
+    public function testListenersRejectsNonStringElementAtomically(): void
+    {
+        try {
+            /** @phpstan-ignore-argument */
+            Event::listeners(['good.event', 5], function () {});
+            $this->fail('Expected InvalidArgumentException');
+        } catch (\Roolith\Event\Exceptions\InvalidArgumentException $e) {
+            $this->assertEquals('Name characters should contain alphanumeric with ., * and _', $e->getMessage());
+        }
+
+        try {
+            Event::trigger('good.event');
+            $this->fail('Expected Exception for unregistered event');
+        } catch (\Roolith\Event\Exceptions\Exception $e) {
+            $this->assertEquals('Listener not defined', $e->getMessage());
+        }
+    }
+
+    /**
+     * Exact plus nested wildcard listeners co-fire on exact trigger.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testExactPlusNestedWildcardCoFire(): void
+    {
+        $exact = 0;
+        $wildcard = 0;
+
+        Event::listen('a.b.c', function () use (&$exact) {
+            $exact++;
+        });
+        Event::listen('a.b.*', function () use (&$wildcard) {
+            $wildcard++;
+        });
+
+        $this->assertTrue(Event::trigger('a.b.c'));
+        $this->assertEquals(1, $exact);
+        $this->assertEquals(1, $wildcard);
     }
 
     /**
