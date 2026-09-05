@@ -1,58 +1,68 @@
 <?php
+
+declare(strict_types=1);
 namespace Roolith\Event;
 
-use Roolith\Event\Exceptions\Exception;
 use Roolith\Event\Exceptions\InvalidArgumentException;
+use Roolith\Event\Interfaces\DispatcherInterface;
 use Roolith\Event\Interfaces\EventInterface;
 
+/**
+ * Static facade over a shared Dispatcher.
+ *
+ * Kept for backwards compatibility. Prefer `new Dispatcher()` with
+ * dependency injection for isolated state in apps and tests:
+ *
+ *   $events = new Dispatcher();
+ *
+ * Shared global state is explicit here: every static call proxies to
+ * `Event::shared()`. Tests using the facade should call `Event::reset()`
+ * in tearDown or `Event::setSharedDispatcher(new Dispatcher())` for isolation.
+ */
 class Event implements EventInterface
 {
-    /**
-     * Registered event listeners keyed by event name.
-     *
-     * @var array<string, array<int, callable>>
-     */
-    private static array $events = [];
+    private static ?DispatcherInterface $shared = null;
 
     /**
-     * Error messages used for exceptions.
+     * Get the shared dispatcher, creating it on first use.
      *
-     * @var array<string, string>
+     * @return DispatcherInterface Shared instance.
      */
-    protected static array $errorMessage = [
-        'name' => 'Name characters should contain alphanumeric with ., * and _',
-        'callback' => 'Invalid callback',
-        'array' => 'Array required',
-        'listener' => 'Listener not defined',
-    ];
+    public static function shared(): DispatcherInterface
+    {
+        if (self::$shared === null) {
+            self::$shared = new Dispatcher();
+        }
+
+        return self::$shared;
+    }
+
+    /**
+     * Replace the shared dispatcher (useful for test isolation).
+     *
+     * @param DispatcherInterface $dispatcher Replacement instance.
+     * @return void
+     */
+    public static function setSharedDispatcher(DispatcherInterface $dispatcher): void
+    {
+        self::$shared = $dispatcher;
+    }
 
     /**
      * Register a listener for an event.
      *
-     * @param string $name Event name (alphanumeric with ., * and _).
-     * @param callable $callback Listener callback to invoke when the event is triggered.
+     * @param string $name Event name.
+     * @param callable $callback Listener callback.
      * @return bool True on success.
      * @throws InvalidArgumentException When the event name is invalid.
      */
     public static function listen(string $name, callable $callback): bool
     {
-        if (!self::isValidName($name)) {
-            throw new InvalidArgumentException(self::$errorMessage['name']);
-        }
-
-        self::$events[$name][] = $callback;
-
-        return true;
+        return self::shared()->listen($name, $callback);
     }
 
     /**
-     * Register a listener for multiple events atomically.
-     *
-     * Empty list returns false and registers nothing. All names are
-     * validated before any listener is registered, so a failure
-     * leaves existing state untouched. Non-string elements throw
-     * `InvalidArgumentException` (note: `listen()` coerces scalar
-     * names via its `string` type-hint instead).
+     * Register one listener for multiple events atomically.
      *
      * @param array<int, string> $names List of event names.
      * @param callable $callback Listener callback shared by all given event names.
@@ -61,236 +71,89 @@ class Event implements EventInterface
      */
     public static function listeners(array $names, callable $callback): bool
     {
-        if ($names === []) {
-            return false;
-        }
-
-        foreach ($names as $name) {
-            if (!is_string($name) || !self::isValidName($name)) {
-                throw new InvalidArgumentException(self::$errorMessage['name']);
-            }
-        }
-
-        foreach ($names as $name) {
-            self::$events[$name][] = $callback;
-        }
-
-        return true;
+        return self::shared()->listeners($names, $callback);
     }
 
     /**
      * Trigger an event.
      *
+     * Returns ordered listener results instead of bool. Missing listeners
+     * return an empty array (no exception). A listener returning boolean
+     * false stops further propagation.
+     *
+     * Reentrancy: listeners are snapshotted before dispatch, so listen() /
+     * unregister() inside a listener affect the next trigger(), not the
+     * one in progress.
+     *
      * @param string $name Event name to trigger.
      * @param mixed $argument Optional single argument or list of arguments (array) passed to listeners.
-     * @return bool True on success.
-     * @throws Exception When no listener is defined for the event.
+     * @return array<int, mixed> Ordered listener return values.
      * @throws InvalidArgumentException When the event name is invalid.
      */
-    public static function trigger(string $name, mixed $argument = null): bool
+    public static function trigger(string $name, mixed $argument = null): array
     {
-        if (!self::isValidName($name)) {
-            throw new InvalidArgumentException(self::$errorMessage['name']);
-        }
-
-        if (!isset(self::$events[$name]) && !self::hasWildcardListener($name)) {
-            throw new Exception(self::$errorMessage['listener']);
-        }
-
-        if (isset(self::$events[$name])) {
-            foreach (self::$events[$name] as $event => $callback) {
-                if ($argument !== null && is_array($argument)) {
-                    call_user_func_array($callback, $argument);
-                }
-                elseif ($argument !== null && !is_array($argument)) {
-                    call_user_func($callback, $argument);
-                }
-                else {
-                    call_user_func($callback);
-                }
-            }
-        }
-
-        try {
-            self::triggerWildCard($name, $argument);
-        } catch (InvalidArgumentException $e) {
-            throw new InvalidArgumentException(self::$errorMessage['name']);
-        } catch (Exception $e) {
-            throw new Exception(self::$errorMessage['listener']);
-        }
-
-        return true;
+        return self::shared()->trigger($name, $argument);
     }
 
     /**
-     * Get matching single-level wildcard listener storage key.
+     * Remove listeners.
      *
-     * `event.login` matches `event.*` stored as `event.*`.
-     * `a.b.c` matches `a.b.*`. Matching is single-level: only the
-     * immediate parent prefix is considered (depth must align).
-     * Self-recursion is guarded in `triggerWildCard()`, so names
-     * containing `*` (e.g. `event.*`, `event.login.*`) still resolve
-     * to their prefix wildcard here. When the trigger itself is a
-     * wildcard form with no exact listener (e.g. `event.login.*`),
-     * walk up to the closest ancestor wildcard (`event.*`).
-     *
-     * @param string $name Event name to match.
-     * @return string|null Wildcard storage key or null when none matches.
+     * @param string|array<int, string> $name Event name or list of event names.
+     * @param callable|null $callback When given, only that callback is removed.
+     * @return bool True only when every given name removed something, false otherwise.
+     * @throws InvalidArgumentException When any event name is invalid.
      */
-    private static function getWildcardListenerName(string $name): ?string
+    public static function unregister(string|array $name, ?callable $callback = null): bool
     {
-        if (!str_contains($name, '.')) {
-            return null;
-        }
-
-        $parts = explode('.', $name);
-        $parentParts = array_slice($parts, 0, -1);
-
-        if ($parentParts === []) {
-            return null;
-        }
-
-        $candidate = implode('.', $parentParts) . '.*';
-
-        if (isset(self::$events[$candidate])) {
-            return $candidate;
-        }
-
-        if ($candidate === $name) {
-            for ($i = count($parts) - 2; $i >= 1; $i--) {
-                $ancestor = implode('.', array_slice($parts, 0, $i)) . '.*';
-
-                if ($ancestor !== $name && isset(self::$events[$ancestor])) {
-                    return $ancestor;
-                }
-            }
-        }
-
-        return null;
+        return self::shared()->unregister($name, $callback);
     }
 
     /**
-     * Check for a matching single-level wildcard listener.
+     * Check whether triggering a name would invoke any listener.
      *
      * @param string $name Event name to check.
-     * @return bool True when a wildcard listener matches.
+     * @return bool True when an exact or wildcard listener matches.
+     * @throws InvalidArgumentException When the event name is invalid.
      */
-    private static function hasWildcardListener(string $name): bool
+    public static function has(string $name): bool
     {
-        return self::getWildcardListenerName($name) !== null;
+        return self::shared()->has($name);
     }
 
     /**
-     * Trigger wild card event.
+     * Get registered listeners.
      *
-     * @param string $name Event name to match against wildcard listeners.
-     * @param mixed $argument Optional single argument or list of arguments (array) passed to listeners.
-     * @return bool True when a wildcard listener was triggered, false otherwise.
-     * @throws Exception When wildcard dispatch fails.
-     * @throws InvalidArgumentException When the resolved wildcard name is invalid.
+     * @param string|null $name Null for all listeners keyed by name, otherwise listeners firing for that name.
+     * @return array<string, array<int, callable>>|array<int, callable>
+     * @throws InvalidArgumentException When the given name is invalid.
      */
-    private static function triggerWildCard(string $name, mixed $argument): bool
+    public static function getListeners(?string $name = null): array
     {
-        $wildcardListenerName = self::getWildcardListenerName($name);
-
-        if ($wildcardListenerName !== null && $wildcardListenerName !== $name) {
-            try {
-                return self::trigger($wildcardListenerName, $argument);
-            } catch (InvalidArgumentException $e) {
-                throw new InvalidArgumentException($e->getMessage());
-            } catch (Exception $e) {
-                throw new Exception($e->getMessage());
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Is valid name.
-     *
-     * @param string $name Event name to validate.
-     * @return bool True when the name contains only allowed characters.
-     */
-    protected static function isValidName(string $name): bool
-    {
-        return (bool) preg_match('/^[a-zA-Z0-9.*_]+$/', $name);
-    }
-
-    /**
-     * Remove event listener(s).
-     *
-     * @param string|array<int, string> $name Event name or list of event names to remove.
-     * @return bool True if removed, false when nothing was registered.
-     */
-    public static function unregister(string|array $name): bool
-    {
-        if (is_array($name)) {
-            foreach ($name as $n) {
-                $result = self::unregister($n);
-
-                if (!$result) {
-                    return $result;
-                }
-            }
-
-            return true;
-        } else {
-            if (isset(self::$events[$name])) {
-                unset(self::$events[$name]);
-
-                return true;
-            }
-        }
-
-        return false;
+        return self::shared()->getListeners($name);
     }
 
     /**
      * Set error messages by merging over defaults.
      *
-     * Unknown keys or non-string/empty values are rejected so a
-     * partial update can never leave other keys undefined.
+     * Only the `name` key is currently thrown. `callback`, `array`, and
+     * `listener` are accepted for backwards compatibility but reserved.
      *
-     * @param array<string, string> $errorMessageArray Custom error messages keyed by `name`, `callback`, `array`, `listener`.
+     * @param array<string, string> $errorMessageArray Custom messages keyed by name, callback, array, listener.
      * @return bool True on success.
      * @throws InvalidArgumentException When a key is unknown or a message is not a non-empty string.
      */
     public static function setErrorMessage(array $errorMessageArray): bool
     {
-        $allowed = ['name', 'callback', 'array', 'listener'];
-
-        foreach ($errorMessageArray as $key => $message) {
-            if (!in_array($key, $allowed, true) || !is_string($message) || $message === '') {
-                throw new InvalidArgumentException('Invalid error message key or value');
-            }
-        }
-
-        self::$errorMessage = array_merge(self::$errorMessage, $errorMessageArray);
-
-        return true;
+        return self::shared()->setErrorMessage($errorMessageArray);
     }
 
     /**
-     * Is wildcard name.
-     *
-     * @param string $name Event name to check.
-     * @return bool True when the name contains a wildcard (`.*`).
-     */
-    protected static function isWildcardName(string $name): bool
-    {
-        return (bool) strstr($name, '.*');
-    }
-
-    /**
-     * Reset all events.
+     * Reset the shared dispatcher.
      *
      * @return bool True on success.
      */
     public static function reset(): bool
     {
-        self::$events = [];
-
-        return true;
+        return self::shared()->reset();
     }
 }
