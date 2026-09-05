@@ -147,6 +147,78 @@ class EventTest extends TestCase
     }
 
     /**
+     * Should trigger an event with falsy single args.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     * @dataProvider falsyArgumentProvider
+     */
+    public function testShouldTriggerEventWithFalsyArgument(mixed $falsyValue): void
+    {
+        $fnCalled = false;
+        $received = 'not-called';
+
+        $fn = function ($p) use (&$fnCalled, &$received) {
+            $fnCalled = true;
+            $received = $p;
+        };
+
+        Event::listen('event', $fn);
+        $result = Event::trigger('event', $falsyValue);
+
+        $this->assertTrue($result);
+        $this->assertTrue($fnCalled);
+        $this->assertSame($falsyValue, $received);
+    }
+
+    /**
+     * Should trigger wildcard listener with falsy single args.
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     * @dataProvider falsyArgumentProvider
+     */
+    public function testShouldTriggerWildcardEventWithFalsyArgument(mixed $falsyValue): void
+    {
+        $fnCalled = false;
+        $received = 'not-called';
+
+        Event::listen('event.*', function ($p) use (&$fnCalled, &$received) {
+            $fnCalled = true;
+            $received = $p;
+        });
+
+        $result = Event::trigger('event.login', $falsyValue);
+
+        $this->assertTrue($result);
+        $this->assertTrue($fnCalled);
+        $this->assertSame($falsyValue, $received);
+    }
+
+    /**
+     * Null argument invokes zero-arg listener (null is the no-argument sentinel).
+     *
+     * @return void
+     * @throws \Roolith\Event\Exceptions\Exception
+     * @throws \Roolith\Event\Exceptions\InvalidArgumentException
+     */
+    public function testShouldTriggerEventWithNullInvokesZeroArgListener(): void
+    {
+        $fnCalled = false;
+
+        Event::listen('event', function () use (&$fnCalled) {
+            $fnCalled = true;
+        });
+
+        $result = Event::trigger('event', null);
+
+        $this->assertTrue($result);
+        $this->assertTrue($fnCalled);
+    }
+
+    /**
      * Should listen to wildcard events.
      *
      * @return void
@@ -488,6 +560,20 @@ class EventTest extends TestCase
             ['test', $fn],
             ['test.name', $fn],
             ['test.*', $fn],
+        ];
+    }
+
+    /**
+     * Falsy argument provider.
+     *
+     * @return array<string, array{0: mixed}>
+     */
+    public function falsyArgumentProvider(): array
+    {
+        return [
+            'integer zero' => [0],
+            'empty string' => [''],
+            'false' => [false],
         ];
     }
 }
